@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+notebooks/__marimo__/
+conditions.parquet
+conditions.csv
+.ruff_cache/
+.claude/settings.local.json
+notebooks/conditions.html

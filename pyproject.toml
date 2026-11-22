@@ -1,0 +1,34 @@
+[project]
+name = "lter-operation-conditions"
+version = "0.1.0"
+description = "Wind and sea state at NES-LTER cruise deployments, from ship underway data, NDBC buoys and GFS-Wave."
+readme = "README.md"
+authors = [
+    { name = "Brett Longworth", email = "blongworth@whoi.edu" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "eccodes>=2.50.0",
+    "eccodeslib>=2.50.0.33",
+    "httpx>=0.28.1",
+    "polars>=2.1.0",
+]
+
+[project.scripts]
+lter-operation-conditions = "lter_operation_conditions.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.3",
+]
+notebook = [
+    "marimo>=0.25.2",
+    "plotly>=7.1.0",
+]
+
+[tool.uv]
+default-groups = ["dev", "notebook"]
