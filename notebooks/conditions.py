@@ -157,18 +157,19 @@ def _(METRICS, data, mo, season_box):
 
 
 @app.cell
-def _(METRICS, data, pl):
-    data.group_by("deployment_type").agg(
+def _(data, pl):
+    data.group_by("ship", "deployment_type").agg(
         pl.len().alias("n"),
         *[
             agg
-            for col in METRICS
+            for col in ("wind_speed_m_s", "gfs_wave_height_m")
             for agg in (
                 pl.col(col).median().round(1).alias(f"{col}_median"),
                 pl.col(col).quantile(0.95).round(1).alias(f"{col}_p95"),
+                pl.col(col).max().round(1).alias(f"{col}_max"),
             )
         ],
-    ).sort("deployment_type")
+    ).sort("ship", "deployment_type")
 
 
 if __name__ == "__main__":
