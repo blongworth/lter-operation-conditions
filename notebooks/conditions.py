@@ -164,8 +164,8 @@ def _(METRICS, data, pl):
             agg
             for col in METRICS
             for agg in (
-                pl.col(col).median().alias(f"{col}_median"),
-                pl.col(col).quantile(0.95).alias(f"{col}_p95"),
+                pl.col(col).median().round(1).alias(f"{col}_median"),
+                pl.col(col).quantile(0.95).round(1).alias(f"{col}_p95"),
             )
         ],
     ).sort("deployment_type")
