@@ -132,7 +132,7 @@ def _(SEASONS, mo, pl):
         )
         return mo.ui.plotly(fig)
 
-    return (season_box,)
+    return go, season_box
 
 
 @app.cell
@@ -157,19 +157,142 @@ def _(METRICS, data, mo, season_box):
 
 
 @app.cell
-def _(data, pl):
-    data.group_by("ship", "deployment_type").agg(
-        pl.len().alias("n"),
-        *[
-            agg
-            for col in ("wind_speed_m_s", "gfs_wave_height_m")
-            for agg in (
-                pl.col(col).median().round(1).alias(f"{col}_median"),
-                pl.col(col).quantile(0.95).round(1).alias(f"{col}_p95"),
-                pl.col(col).max().round(1).alias(f"{col}_max"),
+def _(mo):
+    mo.md("""
+    ## CTD upper tail by ship
+
+    Only casts that happened are recorded (weather cancellations are not), so these
+    show the conditions CTDs were done in, not hard operating limits.
+    """)
+
+
+@app.cell
+def _(data, go, mo, pl):
+    ctd = data.filter(pl.col("deployment_type") == "CTD911")
+    ctd_ships = sorted(ctd["ship"].unique().to_list())
+    SHIP_COLORS = dict(
+        zip(
+            ctd_ships,
+            ["#4c78a8", "#e45756", "#54a24b", "#b279a2", "#f58518", "#72b7b2"],
+        )
+    )
+
+    def exceedance(col, label):
+        """Fraction of CTD casts at or above each value, per ship (log y)."""
+        fig = go.Figure()
+        for ship in ctd_ships:
+            v = ctd.filter((pl.col("ship") == ship) & pl.col(col).is_not_null())[
+                col
+            ].sort(descending=True)
+            n = len(v)
+            if n == 0:
+                continue
+            fig.add_trace(
+                go.Scatter(
+                    x=v,
+                    y=[(i + 1) / n for i in range(n)],
+                    mode="lines+markers",
+                    line={"shape": "hv", "color": SHIP_COLORS[ship]},
+                    marker={"size": 4},
+                    name=f"{ship} (n={n})",
+                    hovertemplate="%{x:.1f}: %{y:.1%} of casts at or above<extra>"
+                    + ship
+                    + "</extra>",
+                )
             )
-        ],
-    ).sort("ship", "deployment_type")
+        for p, dash in ((0.10, "dash"), (0.05, "dot")):
+            fig.add_hline(
+                y=p,
+                line={"dash": dash, "color": "#888", "width": 1},
+                annotation_text=f"p{round((1 - p) * 100)}",
+                annotation_position="right",
+            )
+        fig.update_layout(
+            title=f"CTD exceedance: {label}",
+            xaxis_title=label,
+            yaxis={
+                "title": "Fraction of casts ≥ value",
+                "type": "log",
+                "tickformat": ".0%",
+            },
+        )
+        return mo.ui.plotly(fig)
+
+    def hull(points):
+        """Convex hull (monotone chain), closed for plotting."""
+        pts = sorted(set(points))
+        if len(pts) < 3:
+            return pts
+
+        def cross(o, a, b):
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+        lower, upper = [], []
+        for p in pts:
+            while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+                lower.pop()
+            lower.append(p)
+        for p in reversed(pts):
+            while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+                upper.pop()
+            upper.append(p)
+        h = lower[:-1] + upper[:-1]
+        return h + h[:1]
+
+    def wind_wave_scatter():
+        """Wind vs GFS wave height per CTD cast, with each ship's convex-hull envelope."""
+        fig = go.Figure()
+        both = ctd.filter(
+            pl.col("wind_speed_m_s").is_not_null()
+            & pl.col("gfs_wave_height_m").is_not_null()
+        )
+        for ship in ctd_ships:
+            sub = both.filter(pl.col("ship") == ship)
+            if sub.is_empty():
+                continue
+            color = SHIP_COLORS[ship]
+            fig.add_trace(
+                go.Scatter(
+                    x=sub["wind_speed_m_s"],
+                    y=sub["gfs_wave_height_m"],
+                    mode="markers",
+                    marker={"color": color, "size": 5, "opacity": 0.6},
+                    name=f"{ship} (n={len(sub)})",
+                    legendgroup=ship,
+                    hovertext=[
+                        f"{c} {t:%Y-%m-%d %H:%M}<br>station {st}"
+                        for c, t, st in sub.select(
+                            "cruise", "timestamp", "nearest_station"
+                        ).iter_rows()
+                    ],
+                )
+            )
+            h = hull(list(zip(sub["wind_speed_m_s"], sub["gfs_wave_height_m"])))
+            fig.add_trace(
+                go.Scatter(
+                    x=[p[0] for p in h],
+                    y=[p[1] for p in h],
+                    mode="lines",
+                    line={"color": color, "width": 1.5},
+                    legendgroup=ship,
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+        fig.update_layout(
+            title="CTD casts: wind vs GFS-Wave height (since 2021-03-30)",
+            xaxis_title="Wind speed (m/s)",
+            yaxis_title="GFS-Wave wave height (m)",
+        )
+        return mo.ui.plotly(fig)
+
+    mo.vstack(
+        [
+            exceedance("wind_speed_m_s", "Wind speed (m/s)"),
+            exceedance("gfs_wave_height_m", "GFS-Wave wave height (m)"),
+            wind_wave_scatter(),
+        ]
+    )
 
 
 if __name__ == "__main__":
